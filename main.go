@@ -1,7 +1,9 @@
 package main
 
 import (
+    "context"
     "encoding/json"
+    "errors"
     "fmt"
     "log"
     "net/http"
@@ -12,34 +14,37 @@ import (
     "time"
 )
 
+const (
+    workerCount = 5
+    queueSize   = 100
+)
+
 var client = &http.Client{
     Timeout: 10 * time.Second,
 }
 
-func weatherHandler(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
+// Each job represents one user's weather request.
+type WeatherJob struct {
+    ZipCode string
+    Days    int
+    Ctx     context.Context
+    Result  chan WeatherResult
+}
 
-    zip := strings.TrimSpace(r.URL.Query().Get("zip"))
-    daysStr := r.URL.Query().Get("days")
+// Each worker sends its result through this channel.
+type WeatherResult struct {
+    Data interface{}
+    Err  error
+}
 
-    days, err := strconv.Atoi(daysStr)
+// Shared channel containing pending weather requests.
+var jobs = make(chan WeatherJob, queueSize)
 
-    if len(zip) != 5 || daysStr == "" || err != nil || days < 1 || days > 5 {
-        http.Error(w, "Provide a 5-digit ZIP code and days between 1 and 5", http.StatusBadRequest)
-        return
-    }
-
-    for _, ch := range zip {
-        if ch < '0' || ch > '9' {
-            http.Error(w, "ZIP code must contain only digits", http.StatusBadRequest)
-            return
-        }
-    }
-
+// Retrieves real weather data from OpenWeatherMap.
+func fetchWeather(ctx context.Context, zip string, days int) (interface{}, error) {
     apiKey := os.Getenv("OPENWEATHER_API_KEY")
     if apiKey == "" {
-        http.Error(w, "Weather API is not configured", http.StatusInternalServerError)
-        return
+        return nil, errors.New("weather API key is not configured")
     }
 
     params := url.Values{}
@@ -49,23 +54,19 @@ func weatherHandler(w http.ResponseWriter, r *http.Request) {
 
     apiURL := "https://api.openweathermap.org/data/2.5/forecast?" + params.Encode()
 
-    req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, apiURL, nil)
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
     if err != nil {
-        http.Error(w, "Unable to create weather request", http.StatusInternalServerError)
-        return
+        return nil, err
     }
 
     resp, err := client.Do(req)
     if err != nil {
-        http.Error(w, "Unable to contact OpenWeatherMap", http.StatusBadGateway)
-        return
+        return nil, err
     }
     defer resp.Body.Close()
 
     if resp.StatusCode != http.StatusOK {
-        log.Printf("OpenWeatherMap returned status %d", resp.StatusCode)
-        http.Error(w, fmt.Sprintf("Weather service returned status %d", resp.StatusCode), http.StatusBadGateway)
-        return
+        return nil, fmt.Errorf("OpenWeatherMap returned status %d", resp.StatusCode)
     }
 
     var forecast struct {
@@ -87,32 +88,116 @@ func weatherHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     if err := json.NewDecoder(resp.Body).Decode(&forecast); err != nil {
-        http.Error(w, "Unable to read weather data", http.StatusBadGateway)
-        return
+        return nil, err
     }
 
-    // The API returns one forecast approximately every 3 hours.
-    // Eight entries represent approximately one day.
     count := days * 8
     if count > len(forecast.List) {
         count = len(forecast.List)
     }
 
-    result := map[string]interface{}{
+    return map[string]interface{}{
         "zip_code": zip,
         "city":     forecast.City.Name,
         "days":     days,
         "forecast": forecast.List[:count],
+    }, nil
+}
+
+// A worker waits for jobs and processes them.
+func weatherWorker(id int, jobs <-chan WeatherJob) {
+    for job := range jobs {
+        if job.Ctx.Err() != nil {
+            continue
+        }
+
+        log.Printf("Worker %d processing ZIP %s for %d days",
+            id, job.ZipCode, job.Days)
+
+        data, err := fetchWeather(job.Ctx, job.ZipCode, job.Days)
+
+        // Do not block if the user has disconnected.
+        select {
+        case job.Result <- WeatherResult{
+            Data: data,
+            Err:  err,
+        }:
+        case <-job.Ctx.Done():
+        }
+
+        log.Printf("Worker %d finished ZIP %s", id, job.ZipCode)
+    }
+}
+
+// HTTP handler for incoming weather requests.
+func weatherHandler(w http.ResponseWriter, r *http.Request) {
+    zip := strings.TrimSpace(r.URL.Query().Get("zip"))
+    daysStr := r.URL.Query().Get("days")
+
+    days, err := strconv.Atoi(daysStr)
+
+    if len(zip) != 5 || err != nil || days < 1 || days > 5 {
+        http.Error(w, "Provide a 5-digit ZIP code and days between 1 and 5",
+            http.StatusBadRequest)
+        return
     }
 
-    if err := json.NewEncoder(w).Encode(result); err != nil {
-        log.Printf("Unable to send response: %v", err)
+    for _, ch := range zip {
+        if ch < '0' || ch > '9' {
+            http.Error(w, "ZIP code must contain only digits",
+                http.StatusBadRequest)
+            return
+        }
+    }
+
+    // Each request receives its own result channel.
+    resultChan := make(chan WeatherResult, 1)
+
+    job := WeatherJob{
+        ZipCode: zip,
+        Days:    days,
+        Ctx:     r.Context(),
+        Result:  resultChan,
+    }
+
+    // Add the request to the shared jobs channel.
+    select {
+    case jobs <- job:
+    case <-r.Context().Done():
+        return
+    }
+
+    // Wait for this request's result.
+    select {
+    case result := <-resultChan:
+        if result.Err != nil {
+            log.Printf("Weather request failed: %v", result.Err)
+            http.Error(w, "Unable to retrieve weather forecast",
+                http.StatusBadGateway)
+            return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+
+        if err := json.NewEncoder(w).Encode(result.Data); err != nil {
+            log.Printf("Failed to write response: %v", err)
+        }
+
+    case <-r.Context().Done():
+        return
     }
 }
 
 func main() {
+    // Start five worker goroutines.
+    for i := 1; i <= workerCount; i++ {
+        go weatherWorker(i, jobs)
+    }
+
     http.HandleFunc("/weather", weatherHandler)
 
-    fmt.Println("Weather server running on port 8080")
+    log.Printf("Weather server running on port 8080 with %d workers",
+        workerCount)
+
     log.Fatal(http.ListenAndServe(":8080", nil))
 }
