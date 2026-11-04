@@ -1,0 +1,12 @@
+
+# Prometheus configuration for weather monitoring
+
+global:
+  # Collect metrics every 5 seconds
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "weather-app"
+    static_configs:
+      # Docker service name and internal port
+      - targets: ["weather-app:8080"]

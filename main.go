@@ -12,6 +12,7 @@ import (
     "strconv"
     "strings"
     "time"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -208,7 +209,11 @@ func main() {
         go weatherWorker(i, jobs)
     }
 
-    http.HandleFunc("/weather", weatherHandler)
+	// Record metrics for each weather API request.
+	http.HandleFunc("/weather", metricsMiddleware(weatherHandler))
+
+	// Expose metrics to Prometheus.
+	http.Handle("/metrics", promhttp.Handler())
 
     log.Printf("Weather server running on port 8080 with %d workers",
         workerCount)
