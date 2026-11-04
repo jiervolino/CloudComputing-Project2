@@ -7,9 +7,7 @@
 
 services:
   weather-app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    nano compose.yamlimage: weather-app:oracle
     ports:
       - "8080:8080"
     environment:
@@ -27,6 +25,8 @@ services:
     ports:
       - "127.0.0.1:9092:9092"
     environment:
+      # Limit Kafka's Java heap for the Oracle Cloud VM
+      KAFKA_HEAP_OPTS: "-Xms128m -Xmx256m"
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
@@ -43,9 +43,7 @@ services:
       - kafka-data:/var/lib/kafka/data
   
   weather-consumer:
-    build:
-      context: .
-      dockerfile: consumer/Dockerfile
+    image: weather-consumer:oracle
     environment:
       KAFKA_BROKER: kafka:9092
       # Temperature thresholds in Fahrenheit
