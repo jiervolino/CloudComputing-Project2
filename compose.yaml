@@ -1,3 +1,7 @@
+# Docker Compose runs three services:
+# 1. weather-app: Go HTTP API and Kafka producer
+# 2. kafka: Apache Kafka message broker
+# 3. weather-consumer: Go weather alert evaluator
 
 services:
   weather-app:
@@ -7,7 +11,9 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # API key loaded from the local .env file
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:?Set API key in .env}
+      # Kafka broker address inside Docker
       KAFKA_BROKER: kafka:9092
     depends_on:
       - kafka
@@ -15,6 +21,7 @@ services:
   kafka:
     image: apache/kafka:4.1.2
     hostname: kafka
+    # Bind Kafka to the local computer only
     ports:
       - "127.0.0.1:9092:9092"
     environment:
@@ -32,6 +39,23 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     volumes:
       - kafka-data:/var/lib/kafka/data
+  
+  weather-consumer:
+    build:
+      context: .
+      dockerfile: consumer/Dockerfile
+    environment:
+      KAFKA_BROKER: kafka:9092
+      # Temperature thresholds in Fahrenheit
+      HIGH_TEMP_THRESHOLD: "90"
+      LOW_TEMP_THRESHOLD: "32"
+      # Wind speed threshold in mph
+      HIGH_WIND_THRESHOLD: "25"
+    depends_on:
+      - kafka
+    # Restart consumer if it exits unexpectedly
+    restart: unless-stopped
+
 
 volumes:
   kafka-data:
