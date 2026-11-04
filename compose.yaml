@@ -1,7 +1,13 @@
 services:
   weather-app:
-    build: .
-    container_name: weather-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:?Set OPENWEATHER_API_KEY in .env}
+
 
 # we can both use the command:
 # docker compose up --build
