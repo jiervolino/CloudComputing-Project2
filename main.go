@@ -104,7 +104,7 @@ func fetchWeather(ctx context.Context, zip string, days int) (interface{}, error
     }, nil
 }
 
-// A worker waits for jobs and processes them.
+// A Weather worker waits for jobs and processes them.
 func weatherWorker(id int, jobs <-chan WeatherJob) {
     for job := range jobs {
         if job.Ctx.Err() != nil {
@@ -115,6 +115,15 @@ func weatherWorker(id int, jobs <-chan WeatherJob) {
             id, job.ZipCode, job.Days)
 
         data, err := fetchWeather(job.Ctx, job.ZipCode, job.Days)
+
+		// Publish to Kafka if fetch was successful.
+		if err == nil {
+			if publishErr := publishWeather(job.Ctx, job.ZipCode, data); publishErr != nil {
+				log.Printf("Kafka publish failed for ZIP %s: %v",
+					job.ZipCode, publishErr)
+				err = publishErr
+			}
+		}
 
         // Do not block if the user has disconnected.
         select {
@@ -189,6 +198,11 @@ func weatherHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+
+	// Initialize Kafka producer
+	initKafka()
+	defer kafkaWriter.Close()
+
     // Start five worker goroutines.
     for i := 1; i <= workerCount; i++ {
         go weatherWorker(i, jobs)
