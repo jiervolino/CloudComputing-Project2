@@ -6,7 +6,12 @@ global:
   scrape_interval: 5s
 
 scrape_configs:
+  # Monitor the Go weather API
   - job_name: "weather-app"
     static_configs:
-      # Docker service name and internal port
       - targets: ["weather-app:8080"]
+
+  # Monitor the Kafka weather alert consumer
+  - job_name: "weather-consumer"
+    static_configs:
+      - targets: ["weather-consumer:8081"]

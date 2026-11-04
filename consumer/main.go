@@ -4,10 +4,12 @@ import (
     "context"
     "encoding/json"
     "log"
+	"net/http"
     "os"
     "strconv"
     "time"
-
+	
+	"github.com/prometheus/client_golang/prometheus/promhttp"
     "github.com/segmentio/kafka-go"
 )
 
@@ -55,21 +57,24 @@ func evaluateWeather(event WeatherEvent, highTemp, lowTemp, highWind float64) {
         forecastTime := time.Unix(entry.Dt, 0).UTC().Format(time.RFC3339)
 
         if entry.Main.Temp > highTemp {
-            log.Printf("HEAT ALERT | ZIP=%s | Time=%s | Temp=%.2f°F | Threshold=%.2f°F",
-                event.ZipCode, forecastTime, entry.Main.Temp, highTemp)
-            alertCount++
-        }
+    		log.Printf("HEAT ALERT | ZIP=%s | Time=%s | Temp=%.2f°F | Threshold=%.2f°F",
+        		event.ZipCode, forecastTime, entry.Main.Temp, highTemp)
+    		alertCount++
+    		weatherAlerts.WithLabelValues("heat").Inc()
+		}
 
         if entry.Main.Temp < lowTemp {
-            log.Printf("FREEZING ALERT | ZIP=%s | Time=%s | Temp=%.2f°F | Threshold=%.2f°F",
-                event.ZipCode, forecastTime, entry.Main.Temp, lowTemp)
-            alertCount++
-        }
+			log.Printf("FREEZING ALERT | ZIP=%s | Time=%s | Temp=%.2f°F | Threshold=%.2f°F",
+				event.ZipCode, forecastTime, entry.Main.Temp, lowTemp)
+			alertCount++
+			weatherAlerts.WithLabelValues("freezing").Inc()
+		}
 
         if entry.Wind.Speed > highWind {
             log.Printf("WIND ALERT | ZIP=%s | Time=%s | Wind=%.2f mph | Threshold=%.2f mph",
                 event.ZipCode, forecastTime, entry.Wind.Speed, highWind)
             alertCount++
+            weatherAlerts.WithLabelValues("wind").Inc()
         }
     }
 
@@ -82,8 +87,21 @@ func evaluateWeather(event WeatherEvent, highTemp, lowTemp, highWind float64) {
     }
 }
 
+
 func main() {
+    // Expose consumer metrics for Prometheus.
+    http.Handle("/metrics", promhttp.Handler())
+
+    go func() {
+        log.Println("Consumer metrics available on port 8081")
+
+        if err := http.ListenAndServe(":8081", nil); err != nil {
+            log.Printf("Consumer metrics server error: %v", err)
+        }
+    }()
+
     broker := os.Getenv("KAFKA_BROKER")
+
     if broker == "" {
         broker = "kafka:9092"
     }
@@ -122,7 +140,8 @@ func main() {
             return
         }
 
-        evaluateWeather(event, highTemp, lowTemp, highWind)
+		forecastsEvaluated.Inc()
+		evaluateWeather(event, highTemp, lowTemp, highWind)
 
         if err := reader.CommitMessages(context.Background(), message); err != nil {
             log.Printf("Kafka commit error: %v", err)
