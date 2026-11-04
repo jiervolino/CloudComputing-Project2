@@ -1,0 +1,7 @@
+services:
+  weather-app:
+    build: .
+    container_name: weather-app
+
+# we can both use the command:
+# docker compose up --build
