@@ -1,178 +1,124 @@
 # Cloud Computing Project 2 — Weather Monitoring System
 
-## Project Overview
+## Overview
 
-This project CURRENTLY implements a weather monitoring system using Go, Docker, and the OpenWeatherMap API.
+This project implements a cloud-based weather monitoring system using Go, Apache Kafka, Prometheus, Grafana, Docker, and the OpenWeatherMap API.
 
-The application allows users to request weather forecasts by entering a ZIP code and the number of forecast days.
+Users request weather forecasts through an HTTP API by specifying a ZIP code and the number of forecast days. A Go worker pool processes requests concurrently, publishes forecast data to Kafka, and returns JSON responses.
 
-The system uses Go goroutines and channels to process multiple weather requests concurrently through a worker pool.
+A separate Kafka consumer evaluates forecasts for extreme temperatures and wind conditions. Prometheus collects application metrics, which are visualized through Grafana.
 
-**Current Features:**
-- Weather forecasts using OpenWeatherMap
-- HTTP API accepting ZIP codes and forecast durations
-- Support for 1-5 forecast days
-- Concurrent processing using 5 Go workers
-- Docker-based development for Windows and macOS
-- JSON weather responses containing temperature and wind speed
+The complete system is deployed on an Oracle Cloud Ubuntu virtual machine.
 
-## 1. Prerequisites
+## Features
 
-The following software is required:
+- HTTP weather API supporting ZIP codes and 1–5 forecast days
+- Concurrent processing using five Go workers
+- Kafka producer and consumer for weather events
+- Alerts for temperatures above 90°F, below 32°F, and winds above 25 mph
+- Prometheus metrics for requests, latency, and alerts
+- Grafana monitoring dashboard
+- Docker Compose deployment locally and on Oracle Cloud
+
+## System Architecture
+
+```text
+User → Go Weather API → OpenWeatherMap
+             |
+             v
+         Apache Kafka
+             |
+             v
+       Weather Consumer (Alert Evaluation)
+
+
+Weather API + Consumer
+             |
+             v
+         Prometheus
+             |
+             v
+           Grafana
+```
+
+## Prerequisites
 
 - Docker Desktop
 - Git
-- Visual Studio Code (recommended)
 - OpenWeatherMap API key
 
-**Note:** Go does not need to be installed locally. The application is compiled and executed inside Docker using Go 1.25.
+Go does not need to be installed locally. The application is built inside Docker using Go 1.25.
 
-## 2. Clone the Repository
+## Quick Start
 
-Open a terminal and run:
+**1. Clone the repository**
 
 ```bash
 git clone https://github.com/jiervolino/CloudComputing-project2.git
 cd CloudComputing-project2
 ```
 
-If the repository is already cloned, navigate to the existing project directory instead.
-
-## 3. Configure the OpenWeatherMap API Key
-
-Create a `.env` file in the root directory.
-
-Add the following line:
+**2. Create a `.env` file**
 
 ```env
 OPENWEATHER_API_KEY=your_api_key_here
 ```
 
-Replace `your_api_key_here` with your actual OpenWeatherMap API key.
-
-The `.env` file is excluded from GitHub using `.gitignore` to protect the API key.
-
-Each team member must create their own `.env` file.
-
-## 4. Build and Run the Application
-
-Make sure Docker Desktop is running.
-
-From the project directory, execute:
+**3. Start the application**
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
-This command builds the Go application inside Docker and starts the HTTP server.
+**4. Verify the containers**
 
-Expected output:
-
-```text
-Weather server running on port 8080 with 5 workers
+```bash
+docker compose ps
 ```
 
-The application is now accessible at:
+**5. Test the Weather API**
 
-```text
-http://localhost:8080
-```
+Open:
 
-Keep this terminal running while testing the API.
-
-## 5. Test a Single Weather Request
-
-Open a web browser and enter:
-
-```text
 http://localhost:8080/weather?zip=12601&days=2
-```
 
-This requests a two-day forecast for ZIP code 12601 (Poughkeepsie, NY).
-
-The application returns JSON containing:
-- City name
-- ZIP code
-- Number of forecast days requested
-- Temperature in Fahrenheit
-- Wind speed in miles per hour
-- Forecast timestamps
-
-Example response structure:
-
-```json
-{
-  "city": "Poughkeepsie",
-  "days": 2,
-  "forecast": [
-    {
-      "dt": 1793815200,
-      "main": {
-        "temp": 69.1
-      },
-      "wind": {
-        "speed": 9.89
-      }
-    }
-  ],
-  "zip_code": "12601"
-}
-```
-
-The forecast API provides data at three-hour intervals. A two-day request returns approximately 16 forecast entries.
-
-## 6. Test Multiple Concurrent Requests — Windows
-
-Keep Docker running in the first terminal.
-
-Open a second PowerShell terminal in VS Code.
-
-Run the following commands to send two weather requests concurrently:
-
-```powershell
-$job1 = Start-Job -ScriptBlock {
-    Invoke-RestMethod "http://localhost:8080/weather?zip=12601&days=2"
-}
-
-$job2 = Start-Job -ScriptBlock {
-    Invoke-RestMethod "http://localhost:8080/weather?zip=10001&days=3"
-}
-
-$job1, $job2 | Wait-Job | Out-Null
-
-$job1, $job2 | Receive-Job |
-    Select-Object city, zip_code, days
-
-$job1, $job2 | Remove-Job
-```
-
-Expected output:
-
-```text
-city          zip_code days
-----          -------- ----
-Poughkeepsie  12601       2
-New York      10001       3
-```
-
-The Docker terminal displays which worker processed each request.
-
-Example:
-
-```text
-Worker 1 processing ZIP 12601 for 2 days
-Worker 1 finished ZIP 12601
-Worker 3 processing ZIP 10001 for 3 days
-Worker 3 finished ZIP 10001
-```
-
-Worker numbers and execution order may vary.
-
-## 7. Test Multiple Concurrent Requests — macOS
-
-Keep Docker running in one terminal.
-
-Open another terminal and execute:
+Or run:
 
 ```bash
-curl -s "http://localhost:8080/weather?zip=12601&days=2" > /tmp/weather
+curl "http://localhost:8080/weather?zip=12601&days=2"
+```
+
+A successful request returns JSON containing forecast temperatures, wind speeds, and timestamps.
+
+## Monitoring
+
+The application includes Prometheus and Grafana monitoring.
+
+| Service | Local Address |
+|---|---|
+| Weather API | http://localhost:8080 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 |
+
+The Grafana dashboard visualizes request counts, request rates, latency, concurrent requests, and weather alerts.
+
+## Documentation
+
+- [Oracle Cloud Deployment](docs/DEPLOYMENT.md) — Cloud setup, Docker images, SSH access, and Grafana.
+- [Testing Guide](docs/TESTING.md) — API testing, Kafka verification, concurrency, and performance measurements.
+
+## Stop the Application
+
+```bash
+docker compose down
+```
+
+## References
+
+- [Go](https://go.dev/)
+- [Apache Kafka](https://kafka.apache.org/documentation/)
+- [Docker](https://docs.docker.com/)
+- [Prometheus](https://prometheus.io/docs/)
+- [Grafana](https://grafana.com/docs/)
+- [Oracle Cloud](https://docs.oracle.com/en-us/iaas/Content/home.htm)
+- [OpenWeatherMap](https://openweathermap.org/api)
