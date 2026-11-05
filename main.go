@@ -209,6 +209,62 @@ func main() {
         go weatherWorker(i, jobs)
     }
 
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// This ensures only the exact root URL loads the form
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		
+		html := `<!DOCTYPE html>
+<html>
+<head>
+    <title>Weather Monitor</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 40px; 
+            background: #f4f4f9; 
+        }
+        .container { 
+            max-width: 400px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 8px; 
+        }
+        input, button { 
+            width: 100%; 
+            padding: 10px; 
+            margin: 10px 0; 
+            border: 1px solid #ccc; 
+        }
+        button { 
+            background: #007bff; 
+            color: white; 
+            cursor: pointer; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Forecast Request</h2>
+        <form action="/weather" method="GET">
+            <label>5-Digit ZIP Code:</label>
+            <input type="text" name="zip" pattern="[0-9]{5}" required>
+            
+            <label>Forecast Days (1-5):</label>
+            <input type="number" name="days" min="1" max="5" required>
+            
+            <button type="submit">Submit Request</button>
+        </form>
+    </div>
+</body>
+</html>`
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(html))
+	})
+	
 	// Record metrics for each weather API request.
 	http.HandleFunc("/weather", metricsMiddleware(weatherHandler))
 
