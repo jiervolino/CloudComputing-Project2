@@ -221,44 +221,94 @@ func main() {
 <head>
     <title>Weather Monitor</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            padding: 40px; 
-            background: #f4f4f9; 
-        }
-        .container { 
-            max-width: 400px; 
-            margin: 0 auto; 
-            background: white; 
-            padding: 30px; 
-            border-radius: 8px; 
-        }
-        input, button { 
-            width: 100%; 
-            padding: 10px; 
-            margin: 10px 0; 
-            border: 1px solid #ccc; 
-        }
-        button { 
-            background: #007bff; 
-            color: white; 
-            cursor: pointer; 
-        }
+        body { font-family: Arial, sans-serif; padding: 40px; background: #f4f4f9; }
+        .container { max-width: 650px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        input, button { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background: #007bff; color: white; cursor: pointer; border: none; font-weight: bold; font-size: 16px; }
+        button:hover { background: #0056b3; }
+        
+        #result { margin-top: 25px; display: none; }
+        .header-info { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #f4f4f9; padding-bottom: 10px; }
+        .header-info h3 { margin: 0 0 5px 0; color: #333; }
+        .header-info p { margin: 0; color: #666; }
+        
+        .forecast-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; }
+        .forecast-card { background: #e9ecef; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .forecast-card .time { font-size: 0.85em; color: #555; margin-bottom: 10px; font-weight: bold; line-height: 1.4; }
+        .forecast-card .temp { font-size: 1.6em; font-weight: bold; color: #ff5722; margin: 5px 0; }
+        .forecast-card .wind { font-size: 0.85em; color: #17a2b8; font-weight: bold; }
+        
+        .error { color: #dc3545; text-align: center; font-weight: bold; padding: 10px; background: #f8d7da; border-radius: 4px; }
+        .footer { margin-top: 30px; text-align: center; font-size: 0.85em; color: #666; border-top: 1px solid #eee; padding-top: 15px; line-height: 1.5; }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Forecast Request</h2>
-        <form action="/weather" method="GET">
+        <form id="weatherForm">
             <label>5-Digit ZIP Code:</label>
-            <input type="text" name="zip" pattern="[0-9]{5}" required>
+            <input type="text" id="zip" required pattern="[0-9]{5}" placeholder="e.g. 12601">
             
             <label>Forecast Days (1-5):</label>
-            <input type="number" name="days" min="1" max="5" required>
+            <input type="number" id="days" required min="1" max="5" value="2">
             
             <button type="submit">Submit Request</button>
         </form>
+        
+        <div id="result"></div>
+        
+        <div class="footer">
+            <strong>Project2 for Cloud Computing Fall 2026</strong><br>
+            R. O. Topaloglu, Ph.D., Adjunct Professor<br>
+            Marist University
+        </div>
     </div>
+
+    <script>
+        document.getElementById('weatherForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const zip = document.getElementById('zip').value;
+            const days = document.getElementById('days').value;
+            const resultDiv = document.getElementById('result');
+            
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '<p style="text-align:center; color:#666;">Fetching weather data...</p>';
+
+            fetch('/weather?zip=' + zip + '&days=' + days)
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(data => {
+                    // Build the header
+                    let html = '<div class="header-info">';
+                    html += '<h3>' + data.city + ' (' + data.zip_code + ')</h3>';
+                    html += '<p>' + data.days + '-Day Forecast</p></div>';
+                    
+                    // Build the grid of cards
+                    html += '<div class="forecast-grid">';
+                    data.forecast.forEach(item => {
+                        // Convert Unix timestamp to local time
+                        const date = new Date(item.dt * 1000);
+                        const dateStr = date.toLocaleDateString([], {weekday: 'short', month: 'short', day: 'numeric'});
+                        const timeStr = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                        
+                        html += '<div class="forecast-card">';
+                        html += '<div class="time">' + dateStr + '<br>' + timeStr + '</div>';
+                        html += '<div class="temp">' + Math.round(item.main.temp) + '&deg;F</div>';
+                        html += '<div class="wind">Wind: ' + parseFloat(item.wind.speed).toFixed(1) + ' mph</div>';
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                    
+                    resultDiv.innerHTML = html;
+                })
+                .catch(error => {
+                    resultDiv.innerHTML = '<div class="error">Error: Could not retrieve forecast. Please verify the ZIP code.</div>';
+                });
+        });
+    </script>
 </body>
 </html>`
 		w.Header().Set("Content-Type", "text/html")
