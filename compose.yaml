@@ -78,10 +78,6 @@ services:
     image: grafana/grafana:12.2.1
     ports:
       - "0.0.0.0:3000:3000"
-    environment:
-      # Default administrator credentials for local development
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
       # Persist Grafana dashboards and settings
       - grafana-data:/var/lib/grafana
