@@ -1,5 +1,11 @@
 # Cloud Computing Project 2 — Weather Monitoring System
 
+Jenna Iervolino and Sydney Fronheiser
+
+Marist University || Cloud Computing Fall 2026  || 
+R. O. Topaloglu, Ph.D., Adjunct Professor 
+
+
 ## Overview
 
 This project implements a cloud-based weather monitoring system using Go, Apache Kafka, Prometheus, Grafana, Docker, and the OpenWeatherMap API.
